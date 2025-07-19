@@ -34,8 +34,37 @@ module "ecs" {
       }
       assign_public_ip                   = true
       deployment_minimum_healthy_percent = 100
-      subnet_ids                         = [] #List of subnet IDs to use for your tasks
-      security_group_ids                 = [] #Create a SG resource and pass it here
+      subnet_ids                         = module.vpc.public_subnets
+      security_group_ids                 = [aws_security_group.ecs_sg.id]
     }
   }
+}
+
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 5.0"
+
+  name = "${local.prefix}-vpc"
+  cidr = local.vpc_cidr
+
+  azs             = local.azs
+  private_subnets = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 4, k)]
+  public_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k + 48)]
+
+  enable_nat_gateway = true
+  single_nat_gateway = true
+}
+
+resource "aws_security_group" "ecs_sg" {
+  name        = "${local.prefix}-ecs-sg"
+  description = "Allow TCP inbound traffic to flask app"
+  vpc_id      = module.vpc.vpc_id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_tcp" {
+  security_group_id = aws_security_group.ecs_sg.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 8080
+  ip_protocol       = "tcp"
+  to_port           = 8080
 }
